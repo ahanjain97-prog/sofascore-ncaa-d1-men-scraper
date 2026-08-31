@@ -11,7 +11,7 @@
 # clients. This script first tries a normal request, then falls back to a real
 # headless Chrome session via chromote.
 
-SCRIPT_VERSION <- "1.0.1"
+SCRIPT_VERSION <- "1.0.2"
 PARSER_VERSION <- 1L
 SOFASCORE_BASE <- "https://www.sofascore.com"
 
@@ -250,6 +250,13 @@ new_sofascore_client <- function(
     if (!is.null(chrome_path) && nzchar(chrome_path)) {
       Sys.setenv(CHROMOTE_CHROME = chrome_path)
     }
+    if (identical(Sys.info()[["sysname"]], "Linux")) {
+      chromote::set_chrome_args(unique(c(
+        chromote::get_chrome_args(),
+        "--no-sandbox",
+        "--disable-dev-shm-usage"
+      )))
+    }
     state$browser <- chromote::ChromoteSession$new()
     invisible(state$browser$Page$navigate(paste0(SOFASCORE_BASE, "/")))
     invisible(state$browser$Page$loadEventFired(wait_ = TRUE))
@@ -480,10 +487,19 @@ discover_college_events <- function(
           if (!is.null(stale)) {
             payload <- stale
           } else {
-            failed_requests[[length(failed_requests) + 1L]] <- list(
+            failure <- list(
               date = as.character(date), competition_id = competition_id,
-              status = response$status, error = response$error %||% NA_character_
+              status = response$status,
+              transport = response$transport %||% NA_character_,
+              error = response$error %||% NA_character_
             )
+            failed_requests[[length(failed_requests) + 1L]] <- failure
+            message(sprintf(
+              "  discovery FAILED: date=%s feed=%s status=%s transport=%s error=%s",
+              failure$date, failure$competition_id, failure$status,
+              scalar_character(failure$transport, "unknown"),
+              scalar_character(failure$error, "no error message")
+            ))
             next
           }
         }
@@ -1176,6 +1192,13 @@ main <- function() {
     save_state(output_dir, state)
   } else if (date_mode) {
     message("Explicit date run complete; recurring scheduler state was not changed.")
+  }
+
+  if (length(discovery_failures)) {
+    stop(sprintf(
+      "Run incomplete: %d event-discovery request(s) failed; retry the run.",
+      length(discovery_failures)
+    ), call. = FALSE)
   }
 
   message(sprintf(

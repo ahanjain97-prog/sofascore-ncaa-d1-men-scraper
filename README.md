@@ -69,7 +69,7 @@ In GitHub:
 4. Choose `update`, `single_date`, or `date_range` and fill in the relevant date fields.
 5. When the job finishes, download the `ncaa-d1-men-tables-...` artifact from the workflow run's **Artifacts** section.
 
-Every artifact contains all cumulative CSV tables, the run index, and `state.json` when recurring state exists. Artifacts are retained for 30 days. The larger raw-response archive is retained in an Actions cache so recurring jobs can resume without re-scraping the full season.
+When completed games are available, each artifact contains all cumulative CSV tables, the run index, and `state.json` when recurring state exists. A genuinely empty date finishes successfully without an artifact. Artifacts are retained for 30 days. The larger raw-response archive is retained in an Actions cache so recurring jobs can resume without re-scraping the full season.
 
 ### Daily or weekly GitHub schedule
 

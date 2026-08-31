@@ -71,7 +71,7 @@ jobs:
           echo "version=$(Rscript -e 'cat(paste(R.version$major, R.version$minor, sep = "."))')" >> "$GITHUB_OUTPUT"
 
       - name: Restore R package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .r-library
           key: r-packages-${{ runner.os }}-${{ steps.r-config.outputs.version }}-${{ hashFiles('install_dependencies.R') }}
@@ -81,6 +81,8 @@ jobs:
       - name: Set up Chrome
         id: chrome
         uses: browser-actions/setup-chrome@v2
+        with:
+          install-dependencies: true
 
       - name: Install Linux system dependencies
         shell: bash
@@ -95,13 +97,9 @@ jobs:
         run: Rscript tests/test_parsers.R
 
       - name: Restore prior scrape cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
-          path: |
-            data/discovery
-            data/raw
-            data/fragments
-            data/state.json
+          path: data
           key: sofascore-d1-men-${{ github.run_id }}
           restore-keys: |
             sofascore-d1-men-
@@ -151,25 +149,21 @@ jobs:
           ./run_scraper.sh update "${args[@]}"
 
       - name: Save updated scrape cache
-        if: success()
-        uses: actions/cache/save@v4
+        if: always()
+        uses: actions/cache/save@v5
         with:
-          path: |
-            data/discovery
-            data/raw
-            data/fragments
-            data/state.json
+          path: data
           key: sofascore-d1-men-${{ github.run_id }}
 
       - name: Upload cumulative CSV tables
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ncaa-d1-men-tables-${{ github.run_number }}
           path: |
             data/tables/*.csv
             data/runs/*.csv
             data/state.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
           compression-level: 6
