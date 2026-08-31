@@ -6,3 +6,4 @@ logs/
 .RData
 .Renviron
 .scrape-args
+.r-library/

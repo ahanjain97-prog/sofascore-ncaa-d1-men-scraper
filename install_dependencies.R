@@ -17,7 +17,16 @@ if (!length(missing)) {
 }
 
 message("Installing: ", paste(missing, collapse = ", "))
-install.packages(missing, repos = "https://cloud.r-project.org", lib = user_library)
+repository <- Sys.getenv("RSPM", unset = "")
+if (!nzchar(repository)) {
+  configured <- unname(getOption("repos")[["CRAN"]])
+  if (is.null(configured) || is.na(configured)) configured <- ""
+  if (nzchar(configured) && configured != "@CRAN@") repository <- configured
+}
+if (!nzchar(repository)) repository <- "https://cloud.r-project.org"
+
+message("Using R package repository: ", repository)
+install.packages(missing, repos = c(CRAN = repository), lib = user_library)
 
 still_missing <- missing[!vapply(missing, requireNamespace, logical(1L), quietly = TRUE)]
 if (length(still_missing)) {

@@ -62,9 +62,31 @@ jobs:
           r-version: release
           use-public-rspm: true
 
+      - name: Configure the R package library
+        id: r-config
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.r-library"
+          echo "R_LIBS_USER=$GITHUB_WORKSPACE/.r-library" >> "$GITHUB_ENV"
+          echo "version=$(Rscript -e 'cat(paste(R.version$major, R.version$minor, sep = "."))')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore R package cache
+        uses: actions/cache@v4
+        with:
+          path: .r-library
+          key: r-packages-${{ runner.os }}-${{ steps.r-config.outputs.version }}-${{ hashFiles('install_dependencies.R') }}
+          restore-keys: |
+            r-packages-${{ runner.os }}-${{ steps.r-config.outputs.version }}-
+
       - name: Set up Chrome
         id: chrome
         uses: browser-actions/setup-chrome@v2
+
+      - name: Install Linux system dependencies
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends libcurl4-openssl-dev libssl-dev
 
       - name: Install R dependencies
         run: Rscript install_dependencies.R
