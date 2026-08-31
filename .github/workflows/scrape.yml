@@ -1,0 +1,153 @@
+name: Scrape NCAA D1 men's soccer
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: What dates should be scraped?
+        required: true
+        default: update
+        type: choice
+        options:
+          - update
+          - single_date
+          - date_range
+      date:
+        description: Single date (YYYY-MM-DD); used only by single_date
+        required: false
+        type: string
+      start_date:
+        description: Start date (YYYY-MM-DD); used only by date_range
+        required: false
+        type: string
+      end_date:
+        description: End date (YYYY-MM-DD); used only by date_range
+        required: false
+        type: string
+      force_refresh:
+        description: Re-download endpoints even when they are cached
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '15 6 * * *'
+      timezone: America/Chicago
+    - cron: '15 6 * * 1'
+      timezone: America/Chicago
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sofascore-ncaa-d1-men
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.schedule == '15 6 * * *' &&
+       (vars.SCRAPE_FREQUENCY == '' || vars.SCRAPE_FREQUENCY == 'daily')) ||
+      (github.event.schedule == '15 6 * * 1' && vars.SCRAPE_FREQUENCY == 'weekly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out the scraper
+        uses: actions/checkout@v6
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Set up Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+
+      - name: Install R dependencies
+        run: Rscript install_dependencies.R
+
+      - name: Run parser tests
+        run: Rscript tests/test_parsers.R
+
+      - name: Restore prior scrape cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/discovery
+            data/raw
+            data/fragments
+            data/state.json
+          key: sofascore-d1-men-${{ github.run_id }}
+          restore-keys: |
+            sofascore-d1-men-
+
+      - name: Scrape completed Division I men's matches
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          RUN_MODE: ${{ inputs.mode }}
+          SINGLE_DATE: ${{ inputs.date }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          FORCE_REFRESH: ${{ inputs.force_refresh }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="${RUN_MODE:-update}"
+          args=(--chrome-path "$CHROME_PATH")
+
+          case "$mode" in
+            update)
+              ;;
+            single_date)
+              if [[ ! "${SINGLE_DATE:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "single_date requires date in YYYY-MM-DD format" >&2
+                exit 2
+              fi
+              args+=(--start-date "$SINGLE_DATE" --end-date "$SINGLE_DATE")
+              ;;
+            date_range)
+              if [[ ! "${START_DATE:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+                 [[ ! "${END_DATE:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "date_range requires start_date and end_date in YYYY-MM-DD format" >&2
+                exit 2
+              fi
+              args+=(--start-date "$START_DATE" --end-date "$END_DATE")
+              ;;
+            *)
+              echo "Unknown mode: $mode" >&2
+              exit 2
+              ;;
+          esac
+
+          if [[ "${FORCE_REFRESH:-false}" == "true" ]]; then
+            args+=(--force)
+          fi
+
+          ./run_scraper.sh update "${args[@]}"
+
+      - name: Save updated scrape cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/discovery
+            data/raw
+            data/fragments
+            data/state.json
+          key: sofascore-d1-men-${{ github.run_id }}
+
+      - name: Upload cumulative CSV tables
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ncaa-d1-men-tables-${{ github.run_number }}
+          path: |
+            data/tables/*.csv
+            data/runs/*.csv
+            data/state.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6

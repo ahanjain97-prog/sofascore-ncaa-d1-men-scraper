@@ -1,0 +1,8 @@
+data/
+logs/
+.DS_Store
+.Rapp.history
+.Rhistory
+.RData
+.Renviron
+.scrape-args
