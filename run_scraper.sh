@@ -5,6 +5,14 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 scraper="$project_dir/sofascore_college_scraper.R"
 output_dir="$project_dir/data"
 
+run_r_scraper() {
+  exec Rscript "$scraper" \
+    --output "$output_dir" \
+    --division 1 \
+    --gender men \
+    "$@"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -37,9 +45,9 @@ if [[ -z "$mode" || "$mode" == "-h" || "$mode" == "--help" ]]; then
 fi
 shift
 
-date_args=()
 case "$mode" in
   update)
+    run_r_scraper "$@"
     ;;
   date)
     if [[ $# -lt 1 ]]; then
@@ -47,8 +55,9 @@ case "$mode" in
       usage >&2
       exit 2
     fi
-    date_args=(--start-date "$1" --end-date "$1")
+    selected_date="$1"
     shift
+    run_r_scraper --start-date "$selected_date" --end-date "$selected_date" "$@"
     ;;
   range)
     if [[ $# -lt 2 ]]; then
@@ -56,8 +65,10 @@ case "$mode" in
       usage >&2
       exit 2
     fi
-    date_args=(--start-date "$1" --end-date "$2")
+    start_date="$1"
+    end_date="$2"
     shift 2
+    run_r_scraper --start-date "$start_date" --end-date "$end_date" "$@"
     ;;
   *)
     echo "Unknown mode: $mode" >&2
@@ -65,10 +76,3 @@ case "$mode" in
     exit 2
     ;;
 esac
-
-exec Rscript "$scraper" \
-  --output "$output_dir" \
-  --division 1 \
-  --gender men \
-  "${date_args[@]}" \
-  "$@"

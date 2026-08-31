@@ -95,7 +95,12 @@ jobs:
         run: Rscript install_dependencies.R
 
       - name: Run parser tests
-        run: Rscript tests/test_parsers.R
+        shell: bash
+        run: |
+          Rscript tests/test_parsers.R
+          ./run_scraper.sh update --help >/dev/null
+          ./run_scraper.sh date 2026-08-31 --help >/dev/null
+          ./run_scraper.sh range 2026-08-01 2026-08-31 --help >/dev/null
 
       - name: Restore prior scrape cache
         uses: actions/cache/restore@v5
