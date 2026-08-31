@@ -24,6 +24,13 @@ chmod +x run_scraper.sh
 Then choose a run mode:
 
 ```bash
+# Easiest daily command: scrape yesterday's completed D1 men's matches
+Rscript scrape_daily.R
+
+# Or choose today so far or an exact America/Chicago calendar date
+Rscript scrape_daily.R today
+Rscript scrape_daily.R 2026-08-31
+
 # Resume the current season through today (best for recurring runs)
 ./run_scraper.sh update
 
@@ -34,7 +41,9 @@ Then choose a run mode:
 ./run_scraper.sh range 2026-08-01 2026-08-31
 ```
 
-On its first `update` run, the scraper backfills from August 1 of the current college season through today. Later runs read `data/state.json`, revisit recent dates, retry transiently missing endpoints, and add newly completed games. Cached successful responses are not downloaded again. Explicit `date` and `range` runs do not alter the recurring scheduler's progress date.
+`scrape_daily.R` is the simple boss-facing entry point. With no argument it scrapes yesterday, which is recommended because those matches should all be complete. It is locked to NCAA Division I men, can be launched from any working directory, reuses cached matches, and updates the cumulative files under `data/tables/`.
+
+On its first `update` run, the full scraper backfills from August 1 of the current college season through today. Later runs read `data/state.json`, revisit recent dates, retry transiently missing endpoints, and add newly completed games. Cached successful responses are not downloaded again. Explicit `date` and `range` runs do not alter the recurring scheduler's progress date.
 
 For every command-line option:
 
@@ -115,7 +124,7 @@ The cumulative tables are:
 | File | Contents |
 |---|---|
 | `events.csv` | One row per match: teams, score, time, competition, venue, status, and data-availability flags |
-| `team_statistics.csv` | Match-by-match team statistics in long form by `event_id`, period, and display group; `key == "expectedGoals"` is team xG |
+| `team_statistics.csv` | Match-by-match team statistics in long form, with both team IDs/names repeated on every row; `key == "expectedGoals"` is team xG |
 | `shots.csv` | One row per shot, including shot xG, player, outcome, situation, body part, and coordinates when supplied |
 | `player_statistics.csv` | One row per player per match, including `statistics_rating` and every other supplied statistic |
 | `incidents.csv` | Goals, cards, substitutions, VAR, and period events |
@@ -124,7 +133,7 @@ The cumulative tables are:
 | `best_players.csv` | Team leaders, match leaderboard, and player of the match |
 | `managers.csv` | Home and away managers |
 
-The team table contains **individual match statistics, not season aggregates**. A row is identified by `event_id`, `period`, `group_name`, and `key`, with `home_value` and `away_value` holding the two teams' values. SofaScore sometimes repeats the same statistic in multiple display groups, so use `unique()` when selecting a key such as xG.
+The team table contains **individual match statistics, not season aggregates**. Every row has `home_team_id`, `home_team_name`, `away_team_id`, and `away_team_name`. A row is identified by `event_id`, `period`, `group_name`, and `key`, with `home_value` and `away_value` holding those teams' values. SofaScore sometimes repeats the same statistic in multiple display groups, so use `unique()` when selecting a key such as xG.
 
 Example analysis in R:
 
@@ -139,7 +148,10 @@ players <- fread("data/tables/player_statistics.csv")
 team_xg <- unique(
   team_stats[
     period == "ALL" & key == "expectedGoals",
-    .(event_id, home_xg = home_value, away_xg = away_value)
+    .(
+      event_id, home_team_name, away_team_name,
+      home_xg = home_value, away_xg = away_value
+    )
   ]
 )
 

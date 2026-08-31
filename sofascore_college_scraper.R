@@ -11,8 +11,8 @@
 # clients. This script first tries a normal request, then falls back to a real
 # headless Chrome session via chromote.
 
-SCRIPT_VERSION <- "1.0.3"
-PARSER_VERSION <- 1L
+SCRIPT_VERSION <- "1.1.0"
+PARSER_VERSION <- 2L
 SOFASCORE_BASE <- "https://www.sofascore.com"
 
 COLLEGE_COMPETITIONS <- data.frame(
@@ -475,6 +475,15 @@ date_in_timezone <- function(timezone) {
   as.Date(format(Sys.time(), tz = timezone, format = "%Y-%m-%d"))
 }
 
+event_date_in_timezone <- function(event, timezone) {
+  timestamp <- scalar_numeric(event$startTimestamp)
+  if (is.na(timestamp)) return(as.Date(NA))
+  as.Date(format(
+    as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC"),
+    tz = timezone, format = "%Y-%m-%d"
+  ))
+}
+
 discovery_cache_path <- function(output_dir, date, competition_id) {
   file.path(output_dir, "discovery", as.character(date), paste0(competition_id, ".json"))
 }
@@ -627,14 +636,24 @@ team_context <- function(event, side) {
   )
 }
 
-parse_team_statistics <- function(payload, event_id) {
+parse_team_statistics <- function(payload, event_id, event) {
+  home <- team_context(event, "home")
+  away <- team_context(event, "away")
   rows <- list()
   for (period_block in payload$statistics %||% list()) {
     period <- scalar_character(period_block$period)
     for (group in period_block$groups %||% list()) {
       group_name <- scalar_character(group$groupName)
       for (item in group$statisticsItems %||% list()) {
-        canonical <- list(event_id = event_id, period = period, group_name = group_name)
+        canonical <- list(
+          event_id = event_id,
+          home_team_id = home$team_id,
+          home_team_name = home$team_name,
+          away_team_id = away$team_id,
+          away_team_name = away$team_name,
+          period = period,
+          group_name = group_name
+        )
         rows[[length(rows) + 1L]] <- add_canonical_fields(canonical, flatten_record(item))
       }
     }
@@ -771,7 +790,7 @@ parse_event_payloads <- function(payloads, event_hint, event_id) {
 
   list(
     events = parse_event_table(list(event = event), event_hint),
-    team_statistics = parse_team_statistics(payloads$statistics %||% list(), event_id),
+    team_statistics = parse_team_statistics(payloads$statistics %||% list(), event_id, event),
     shots = parse_shots(payloads$shotmap %||% list(), event_id, event),
     player_statistics = parse_player_statistics(payloads$lineups %||% list(), event_id, event),
     incidents = parse_incidents(payloads$incidents %||% list(), event_id),
@@ -876,6 +895,61 @@ rebuild_csv_tables <- function(output_dir) {
   ensure_directory(table_dir)
   message("Rebuilding cumulative CSV tables from per-event fragments...")
 
+  team_columns <- c(
+    "home_team_id", "home_team_name", "away_team_id", "away_team_name"
+  )
+  event_context <- data.table::data.table()
+  event_fragment_dir <- file.path(output_dir, "fragments", "events")
+  event_files <- if (dir.exists(event_fragment_dir)) {
+    sort(list.files(event_fragment_dir, pattern = "\\.rds$", full.names = TRUE))
+  } else character()
+  if (length(event_files)) {
+    event_rows <- lapply(event_files, function(path) {
+      fragment <- tryCatch(data.table::as.data.table(readRDS(path)), error = function(error) NULL)
+      required <- c("event_id", team_columns)
+      if (is.null(fragment) || !nrow(fragment) || !all(required %in% names(fragment))) return(NULL)
+      fragment[, required, with = FALSE]
+    })
+    event_rows <- Filter(Negate(is.null), event_rows)
+    if (length(event_rows)) {
+      event_context <- unique(
+        data.table::rbindlist(event_rows, use.names = TRUE, fill = TRUE),
+        by = "event_id"
+      )
+    }
+  }
+
+  read_fragment <- function(path, table_name) {
+    fragment <- tryCatch(data.table::as.data.table(readRDS(path)), error = function(error) NULL)
+    if (is.null(fragment) || table_name != "team_statistics" || !nrow(fragment)) {
+      return(fragment)
+    }
+
+    matched <- if (nrow(event_context)) {
+      event_context[match(fragment$event_id, event_context$event_id)]
+    } else {
+      data.table::as.data.table(setNames(
+        rep(list(rep(NA, nrow(fragment))), length(team_columns)),
+        team_columns
+      ))
+    }
+    for (column in team_columns) {
+      if (!column %in% names(fragment)) {
+        fragment[, (column) := matched[[column]]]
+        next
+      }
+      missing <- is.na(fragment[[column]])
+      if (is.character(fragment[[column]])) missing <- missing | !nzchar(fragment[[column]])
+      if (any(missing)) {
+        data.table::set(
+          fragment, i = which(missing), j = column,
+          value = matched[[column]][missing]
+        )
+      }
+    }
+    fragment
+  }
+
   for (table_name in TABLE_NAMES) {
     fragment_dir <- file.path(output_dir, "fragments", table_name)
     files <- if (dir.exists(fragment_dir)) {
@@ -885,12 +959,16 @@ rebuild_csv_tables <- function(output_dir) {
 
     all_columns <- character()
     for (path in files) {
-      fragment <- tryCatch(readRDS(path), error = function(error) NULL)
+      fragment <- read_fragment(path, table_name)
       if (!is.null(fragment)) all_columns <- union(all_columns, names(fragment))
     }
     if (!length(all_columns)) next
 
-    preferred <- c("event_id", "discovery_date", "start_time_utc", "side", "team_id", "player_id")
+    preferred <- c(
+      "event_id", "discovery_date", "start_time_utc",
+      "home_team_id", "home_team_name", "away_team_id", "away_team_name",
+      "side", "team_id", "player_id"
+    )
     all_columns <- c(intersect(preferred, all_columns), setdiff(all_columns, preferred))
     final_path <- file.path(table_dir, paste0(table_name, ".csv"))
     temp_path <- tempfile(pattern = paste0(table_name, "."), tmpdir = table_dir)
@@ -898,7 +976,7 @@ rebuild_csv_tables <- function(output_dir) {
     row_count <- 0L
 
     for (path in files) {
-      fragment <- tryCatch(data.table::as.data.table(readRDS(path)), error = function(error) NULL)
+      fragment <- read_fragment(path, table_name)
       if (is.null(fragment) || !nrow(fragment)) next
       missing_columns <- setdiff(all_columns, names(fragment))
       for (column in missing_columns) fragment[, (column) := NA]
@@ -1067,8 +1145,8 @@ write_run_index <- function(output_dir, event_rows) {
   invisible(path)
 }
 
-main <- function() {
-  options <- parse_cli(commandArgs(trailingOnly = TRUE))
+main <- function(args = commandArgs(trailingOnly = TRUE)) {
+  options <- parse_cli(args)
   if (options$help) {
     print_help()
     return(invisible(0L))
@@ -1125,6 +1203,22 @@ main <- function() {
     )
     events <- discovered$events
     discovery_failures <- discovered$failures
+
+    event_dates <- vapply(
+      events,
+      function(event) as.character(event_date_in_timezone(event, options$timezone)),
+      character(1L)
+    )
+    in_requested_range <- !is.na(event_dates) &
+      event_dates >= as.character(start_date) & event_dates <= as.character(end_date)
+    removed <- sum(!in_requested_range)
+    if (removed) {
+      message(sprintf(
+        "Filtered out %d games returned by SofaScore outside the requested local date range.",
+        removed
+      ))
+    }
+    events <- events[in_requested_range]
   }
 
   statuses <- vapply(
@@ -1179,8 +1273,8 @@ main <- function() {
   for (index in seq_along(completed)) {
     event <- completed[[index]]
     event_id <- as.integer(scalar_numeric(event$id))
-    discovery_date <- suppressWarnings(as.Date(scalar_character(event$discoveryDate)))
-    recent_event <- !is.na(discovery_date) && discovery_date >= refresh_cutoff
+    match_date <- event_date_in_timezone(event, options$timezone)
+    recent_event <- !is.na(match_date) && match_date >= refresh_cutoff
     refresh_event <- options$force
     message(sprintf(
       "[%d/%d] %s: %s vs %s%s",
