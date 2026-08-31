@@ -11,7 +11,7 @@
 # clients. This script first tries a normal request, then falls back to a real
 # headless Chrome session via chromote.
 
-SCRIPT_VERSION <- "1.0.2"
+SCRIPT_VERSION <- "1.0.3"
 PARSER_VERSION <- 1L
 SOFASCORE_BASE <- "https://www.sofascore.com"
 
@@ -245,7 +245,7 @@ new_sofascore_client <- function(
     state$request_count <- state$request_count + 1L
   }
 
-  initialize_browser <- function() {
+  initialize_browser <- function(initial_path) {
     if (!is.null(state$browser)) return(invisible(state$browser))
     if (!is.null(chrome_path) && nzchar(chrome_path)) {
       Sys.setenv(CHROMOTE_CHROME = chrome_path)
@@ -258,8 +258,36 @@ new_sofascore_client <- function(
       )))
     }
     state$browser <- chromote::ChromoteSession$new()
-    invisible(state$browser$Page$navigate(paste0(SOFASCORE_BASE, "/")))
-    invisible(state$browser$Page$loadEventFired(wait_ = TRUE))
+    invisible(state$browser$Page$navigate(paste0(SOFASCORE_BASE, initial_path)))
+
+    origin_ready <- FALSE
+    last_origin_error <- NULL
+    deadline <- Sys.time() + min(timeout_seconds, 15)
+    while (Sys.time() < deadline) {
+      evaluated <- tryCatch(
+        state$browser$Runtime$evaluate(
+          "window.location.origin", returnByValue = TRUE,
+          wait_ = TRUE, timeout_ = 2
+        ),
+        error = function(error) {
+          last_origin_error <<- conditionMessage(error)
+          NULL
+        }
+      )
+      origin <- pluck_value(evaluated, "result", "value")
+      if (identical(origin, SOFASCORE_BASE)) {
+        origin_ready <- TRUE
+        break
+      }
+      Sys.sleep(0.2)
+    }
+    if (!origin_ready) {
+      stop(
+        "Chrome did not establish the SofaScore origin",
+        if (!is.null(last_origin_error)) paste0(": ", last_origin_error) else "",
+        call. = FALSE
+      )
+    }
     invisible(state$browser)
   }
 
@@ -292,7 +320,7 @@ new_sofascore_client <- function(
 
   browser_fetch <- function(path) {
     tryCatch({
-      initialize_browser()
+      initialize_browser(path)
       path_json <- as.character(jsonlite::toJSON(path, auto_unbox = TRUE))
       javascript <- sprintf(
         paste0(
