@@ -34,7 +34,7 @@ Then choose a run mode:
 ./run_scraper.sh range 2026-08-01 2026-08-31
 ```
 
-On its first `update` run, the scraper backfills from August 1 of the current college season through today. Later runs read `data/state.json`, revisit recent dates, retry transiently missing endpoints, and add newly completed games. Cached successful responses are not downloaded again.
+On its first `update` run, the scraper backfills from August 1 of the current college season through today. Later runs read `data/state.json`, revisit recent dates, retry transiently missing endpoints, and add newly completed games. Cached successful responses are not downloaded again. Explicit `date` and `range` runs do not alter the recurring scheduler's progress date.
 
 For every command-line option:
 
@@ -69,7 +69,7 @@ In GitHub:
 4. Choose `update`, `single_date`, or `date_range` and fill in the relevant date fields.
 5. When the job finishes, download the `ncaa-d1-men-tables-...` artifact from the workflow run's **Artifacts** section.
 
-Every artifact contains all cumulative CSV tables, the run index, and `state.json`. Artifacts are retained for 30 days. The larger raw-response archive is retained in an Actions cache so recurring jobs can resume without re-scraping the full season.
+Every artifact contains all cumulative CSV tables, the run index, and `state.json` when recurring state exists. Artifacts are retained for 30 days. The larger raw-response archive is retained in an Actions cache so recurring jobs can resume without re-scraping the full season.
 
 ### Daily or weekly GitHub schedule
 

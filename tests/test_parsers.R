@@ -73,4 +73,13 @@ stopifnot(tables$player_statistics$statistics_rating[[1L]] == 8.1)
 stopifnot(tables$player_statistics$statistics_expected_goals[[1L]] == 0.42)
 stopifnot(extract_event_id("https://www.sofascore.com/match/x#id:16718922") == 16718922L)
 
+defaults <- default_options()
+stopifnot(is.null(defaults$start_date), is.null(defaults$end_date))
+stopifnot(defaults$gender == "men", defaults$division == "1")
+stopifnot(is_incremental_date_mode(defaults))
+
+explicit_dates <- parse_cli(c("--start-date", "2026-08-31", "--end-date", "2026-08-31"))
+stopifnot(!is.null(explicit_dates$start_date), !is.null(explicit_dates$end_date))
+stopifnot(!is_incremental_date_mode(explicit_dates))
+
 message("Parser tests passed.")

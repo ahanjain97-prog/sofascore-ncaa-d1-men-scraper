@@ -11,7 +11,7 @@
 # clients. This script first tries a normal request, then falls back to a real
 # headless Chrome session via chromote.
 
-SCRIPT_VERSION <- "1.0.0"
+SCRIPT_VERSION <- "1.0.1"
 PARSER_VERSION <- 1L
 SOFASCORE_BASE <- "https://www.sofascore.com"
 
@@ -885,6 +885,10 @@ parse_boolean <- function(x) {
   stop("Not a boolean value: ", x, call. = FALSE)
 }
 
+is_incremental_date_mode <- function(options) {
+  is.null(options$event) && is.null(options$start_date) && is.null(options$end_date)
+}
+
 default_options <- function() {
   list(
     event = NULL,
@@ -1047,6 +1051,7 @@ main <- function() {
   on.exit(client$close(), add = TRUE)
 
   date_mode <- is.null(options$event)
+  incremental_mode <- is_incremental_date_mode(options)
   truncated <- FALSE
   discovery_failures <- list()
 
@@ -1100,7 +1105,7 @@ main <- function() {
   }
 
   known_ids <- vapply(completed, function(event) as.integer(scalar_numeric(event$id)), integer(1L))
-  missing_pending <- if (date_mode) setdiff(pending_ids, known_ids) else integer()
+  missing_pending <- if (incremental_mode) setdiff(pending_ids, known_ids) else integer()
   if (length(missing_pending)) {
     completed <- c(completed, lapply(missing_pending, function(id) {
       list(id = id, status = list(type = "finished"))
@@ -1155,7 +1160,7 @@ main <- function() {
 
   if (!options$no_rebuild) rebuild_csv_tables(output_dir)
 
-  if (date_mode) {
+  if (incremental_mode) {
     state$last_run_utc <- utc_now()
     state$season_start <- as.character(season_start_for(end_date))
     state$pending_event_ids <- as.list(unique(next_pending))
@@ -1169,6 +1174,8 @@ main <- function() {
       state$last_successful_date <- as.character(end_date)
     }
     save_state(output_dir, state)
+  } else if (date_mode) {
+    message("Explicit date run complete; recurring scheduler state was not changed.")
   }
 
   message(sprintf(
