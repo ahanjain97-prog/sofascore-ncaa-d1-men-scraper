@@ -57,9 +57,20 @@ Rscript sofascore_college_scraper.R \
 Rscript sofascore_college_scraper.R --event 16718922 --force
 ```
 
-## Run it from GitHub
+## Run it from GitHub with a self-hosted runner
 
-The included workflow, `.github/workflows/scrape.yml`, lets a repository collaborator run the scraper without using the command line.
+The included workflow, `.github/workflows/scrape.yml`, lets a repository collaborator launch and download scrapes from the GitHub interface. It deliberately targets a private **self-hosted macOS or Linux runner** labeled `sofascore-scraper`.
+
+GitHub-hosted Ubuntu runners were tested end to end, but SofaScore returned HTTP 403 to their datacenter IP even through headless Chrome. A self-hosted runner uses the normal network connection of your office or computer, where the scraper has been validated successfully.
+
+Set up the runner once:
+
+1. In this private repository, open **Settings → Actions → Runners → New self-hosted runner**.
+2. Select macOS or Linux and follow GitHub's generated download and registration commands on the machine that will run the scraper.
+3. Add the custom runner label `sofascore-scraper` when prompted, or add it from the runner's settings afterward.
+4. Configure the runner as a service so it starts automatically with the machine. The machine must be on and connected when a job is scheduled.
+
+GitHub's official setup guide is [Adding self-hosted runners](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners). Keep this repository private: GitHub recommends private repositories for self-hosted runners because repository workflows execute on that machine.
 
 In GitHub:
 
@@ -73,17 +84,17 @@ When completed games are available, each artifact contains all cumulative CSV ta
 
 ### Daily or weekly GitHub schedule
 
-The default is **daily at 6:15 AM America/Chicago**.
+Scheduled runs are **off by default** until the self-hosted runner is ready. The available schedule is 6:15 AM America/Chicago.
 
-To switch the repository to weekly operation:
+To turn scheduling on:
 
 1. Open **Settings → Secrets and variables → Actions → Variables**.
 2. Create a repository variable named `SCRAPE_FREQUENCY`.
-3. Set its value to `weekly`.
+3. Set its value to `daily` or `weekly`.
 
-Weekly mode runs every Monday at 6:15 AM America/Chicago. Set the value to `daily` (or delete the variable) to return to daily runs. Set it to `off` to stop scheduled scraping while keeping manual runs available.
+Daily mode runs every day; weekly mode runs every Monday. Set the value to `off` or delete the variable to stop scheduled scraping while keeping manual runs available.
 
-The first cloud run can take substantially longer because it must build the season cache. GitHub schedules are best-effort and can start later than the exact scheduled minute.
+The first workflow run can take substantially longer because it must build the season cache. GitHub schedules are best-effort and can start later than the exact scheduled minute.
 
 ## Output
 

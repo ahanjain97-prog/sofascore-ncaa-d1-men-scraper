@@ -47,9 +47,9 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.schedule == '15 6 * * *' &&
-       (vars.SCRAPE_FREQUENCY == '' || vars.SCRAPE_FREQUENCY == 'daily')) ||
+       vars.SCRAPE_FREQUENCY == 'daily') ||
       (github.event.schedule == '15 6 * * 1' && vars.SCRAPE_FREQUENCY == 'weekly')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, sofascore-scraper]
     timeout-minutes: 360
 
     steps:
@@ -85,6 +85,7 @@ jobs:
           install-dependencies: true
 
       - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update -qq
