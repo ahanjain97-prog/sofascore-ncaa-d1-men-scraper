@@ -65,12 +65,12 @@ GitHub-hosted Ubuntu runners were tested end to end, but SofaScore returned HTTP
 
 Set up the runner once:
 
-1. In this private repository, open **Settings → Actions → Runners → New self-hosted runner**.
+1. In the repository, open **Settings → Actions → Runners → New self-hosted runner**.
 2. Select macOS or Linux and follow GitHub's generated download and registration commands on the machine that will run the scraper.
 3. Add the custom runner label `sofascore-scraper` when prompted, or add it from the runner's settings afterward.
 4. Configure the runner as a service so it starts automatically with the machine. The machine must be on and connected when a job is scheduled.
 
-GitHub's official setup guide is [Adding self-hosted runners](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners). Keep this repository private: GitHub recommends private repositories for self-hosted runners because repository workflows execute on that machine.
+GitHub's official setup guide is [Adding self-hosted runners](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners). **Security warning:** GitHub recommends private repositories for self-hosted runners because repository workflows execute on that machine. Since this repository is public, the safer option is the local scheduler below. If you do attach a self-hosted runner, use a dedicated machine/account, restrict repository write access to trusted collaborators, and do not add pull-request triggers to this workflow.
 
 In GitHub:
 
